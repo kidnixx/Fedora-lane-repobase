@@ -1,0 +1,25 @@
+---
+users:
+  - name: alexlee
+    group: fedoralane-administrators
+    ssh_key_file: alexlee.pub
+
+  - name: rentanaka
+    group: fedoralane-administrators
+    ssh_key_file: rentanaka.pub
+
+  - name: caseynovak
+    group: fedoralane-support
+    ssh_key_file: caseynovak.pub
+
+  - name: syseng1
+    group: fedoralane-support
+    ssh_key_file: syseng1.pub
+
+  - name: cameronshaw
+    group: fedoralane-developers
+    ssh_key_file: cameronshaw.pub
+
+  - name: developer1
+    group: fedoralane-developers
+    ssh_key_file: developer1.pub
