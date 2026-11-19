@@ -4,7 +4,7 @@
   become: true
 
   vars_files:
-    - ../vars/users.yml
+    - vars/users.yml
 
   tasks:
 
@@ -43,6 +43,6 @@
       ansible.builtin.authorized_key:
         user: "{{ item.name }}"
         state: present
-        key: "{{ lookup('file', '../files/' + item.ssh_key_file) }}"
+        key: "{{ lookup('file', playbook_dir + '/../files/' + item.ssh_key_file) }}"
 
       loop: "{{ users }}"
