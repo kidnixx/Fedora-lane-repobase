@@ -12,14 +12,7 @@ users:
     group: fedoralane-support
     ssh_key_file: caseynovak.pub
 
-  - name: syseng1
-    group: fedoralane-support
-    ssh_key_file: syseng1.pub
-
   - name: cameronshaw
     group: fedoralane-developers
     ssh_key_file: cameronshaw.pub
 
-  - name: developer1
-    group: fedoralane-developers
-    ssh_key_file: developer1.pub
