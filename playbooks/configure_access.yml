@@ -1,0 +1,48 @@
+---
+- name: Configure Fedora Lane Access Model
+  hosts: all
+  become: true
+
+  vars_files:
+    - ../vars/users.yml
+
+  tasks:
+
+    - name: Create Fedora Lane groups
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: present
+
+      loop:
+        - fedoralane-administrators
+        - fedoralane-support
+        - fedoralane-developers
+
+    - name: Create Fedora Lane users
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        groups: "{{ item.group }}"
+        append: true
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+      loop: "{{ users }}"
+
+    - name: Create ssh directory
+      ansible.builtin.file:
+        path: "/home/{{ item.name }}/.ssh"
+        state: directory
+        owner: "{{ item.name }}"
+        group: "{{ item.name }}"
+        mode: "0700"
+
+      loop: "{{ users }}"
+
+    - name: Deploy authorized keys
+      ansible.builtin.authorized_key:
+        user: "{{ item.name }}"
+        state: present
+        key: "{{ lookup('file', '../files/' + item.ssh_key_file) }}"
+
+      loop: "{{ users }}"
