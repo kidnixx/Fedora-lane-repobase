@@ -1,0 +1,9 @@
+---
+- name: Test Fedora Lane connectivity
+  hosts: Linux
+  gather_facts: true
+
+  tasks:
+    - name: Display hostname
+      ansible.builtin.debug:
+        msg: "Connected to {{ inventory_hostname }}"
