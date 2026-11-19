@@ -1,0 +1,17 @@
+---
+- name: Configure MOTD
+  hosts: all
+  become: true
+
+  vars:
+
+    owner: "{{ owner | default('Casey Novak') }}"
+    environment: "{{ environment | default('dev') }}"
+
+  tasks:
+
+    - name: Deploy MOTD
+      ansible.builtin.template:
+        src: ../templates/motd.j2
+        dest: /etc/motd
+        mode: "0644"
