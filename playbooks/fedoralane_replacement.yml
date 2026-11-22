@@ -63,8 +63,7 @@
         security_groups:
           - "{{ fedora_lane_sg.group_id }}"
 
-        iam_instance_profile:
-          name: "{{ instance_profile_name }}"
+        iam_instance_profile: "{{ instance_profile_name }}"
 
         network:
           assign_public_ip: true
