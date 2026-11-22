@@ -107,14 +107,17 @@
         region: "{{ aws_region }}"
       register: ec2_instances
 
-    - name: Display existing instance details
+
+    - name: Display concise EC2 instance details
       ansible.builtin.debug:
-        msg:
-          instance_id: "{{ item.instance_id }}"
-          name: "{{ item.tags.Name | default('Unnamed') }}"
-          state: "{{ item.state.name }}"
-          private_ip: "{{ item.private_ip_address | default('N/A') }}"
-          public_ip: "{{ item.public_ip_address | default('N/A') }}"
-          image_id: "{{ item.image_id }}"
-          security_groups: "{{ item.security_groups | map(attribute='group_id') | list }}"
+        msg: >-
+          Name={{ item.tags.Name | default('Unnamed') }},
+          ID={{ item.instance_id }},
+          State={{ item.state.name }},
+          AMI={{ item.image_id }},
+          Type={{ item.instance_type }},
+          PrivateIP={{ item.private_ip_address | default('N/A') }},
+          SecurityGroups={{ item.security_groups | map(attribute='group_id') | list }}
       loop: "{{ ec2_instances.instances }}"
+      loop_control:
+        label: "{{ item.instance_id }}"
