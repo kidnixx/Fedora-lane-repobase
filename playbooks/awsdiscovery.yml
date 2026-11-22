@@ -36,17 +36,15 @@
       ansible.builtin.debug:
         msg: "{{ security_groups.security_groups | map(attribute='group_id') | list }}"
 
-    - name: Get available RHEL images
-      amazon.aws.ec2_ami_info:
-        region: "{{ aws_region }}"
-        owners:
-          - 309956199498
-        filters:
-          architecture: x86_64
-          state: available
-          name: "*RHEL-9*"
-      register: rhel_images
-
     - name: Display recent RHEL images
       ansible.builtin.debug:
-        msg: "{{ rhel_images.images | sort(attribute='creation_date', reverse=true) | map(attribute='image_id') | list | slice(0, 5) | list }}"
+        msg: >-
+          {{
+            (
+              rhel_images.images
+              | sort(attribute='creation_date', reverse=true)
+            )[:5]
+            | map(attribute='image_id')
+            | list
+          }}
+
