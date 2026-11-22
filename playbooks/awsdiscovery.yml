@@ -1,0 +1,51 @@
+
+---
+- name: Discover AWS resources for Fedora Lane demo
+  hosts: linux
+  gather_facts: false
+
+  vars:
+    aws_region: us-east-2
+
+  tasks:
+    - name: Get available VPCs
+      amazon.aws.ec2_vpc_net_info:
+        region: "{{ aws_region }}"
+      register: vpcs
+
+    - name: Display VPC information
+      ansible.builtin.debug:
+        msg: "{{ vpcs.vpcs | map(attribute='vpc_id') | list }}"
+
+    - name: Get available subnets
+      amazon.aws.ec2_vpc_subnet_info:
+        region: "{{ aws_region }}"
+      register: subnets
+
+    - name: Display subnet information
+      ansible.builtin.debug:
+        msg: "{{ subnets.subnets | map(attribute='subnet_id') | list }}"
+
+    - name: Get security groups
+      amazon.aws.ec2_security_group_info:
+        region: "{{ aws_region }}"
+      register: security_groups
+
+    - name: Display security groups
+      ansible.builtin.debug:
+        msg: "{{ security_groups.security_groups | map(attribute='group_id') | list }}"
+
+    - name: Get available RHEL images
+      amazon.aws.ec2_ami_info:
+        region: "{{ aws_region }}"
+        owners:
+          - 309956199498
+        filters:
+          architecture: x86_64
+          state: available
+          name: "*RHEL-9*"
+      register: rhel_images
+
+    - name: Display recent RHEL images
+      ansible.builtin.debug:
+        msg: "{{ rhel_images.images | sort(attribute='creation_date', reverse=true) | map(attribute='image_id') | list | slice(0, 5) | list }}"
