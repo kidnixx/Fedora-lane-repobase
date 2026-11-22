@@ -1,9 +1,8 @@
 ---
-- name: Test Fedora Lane connectivity
-  hosts: Linux
-  gather_facts: true
+- name: Test AAP connection to a demo Linux host
+  hosts: all
+  gather_facts: false
 
   tasks:
-    - name: Display hostname
-      ansible.builtin.debug:
-        msg: "Connected to {{ inventory_hostname }}"
+    - name: Ping the host
+      ansible.builtin.ping:
