@@ -1,12 +1,12 @@
 
 ---
-- name: Check IAM write permissions
+- name: Check IAM write permissions for Fedora Lane
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Check IAM write permissions without making changes
+    - name: Evaluate IAM permissions without making changes
       ansible.builtin.command:
         argv:
           - python3
@@ -16,43 +16,54 @@
             import json
 
             iam = boto3.client("iam")
+            sts = boto3.client("sts")
 
-            checks = {
-                "create_role": {
-                    "Action": "iam:CreateRole",
-                    "Resource": "*"
-                },
-                "attach_role_policy": {
-                    "Action": "iam:AttachRolePolicy",
-                    "Resource": "*"
-                },
-                "create_instance_profile": {
-                    "Action": "iam:CreateInstanceProfile",
-                    "Resource": "*"
-                },
-                "add_role_to_instance_profile": {
-                    "Action": "iam:AddRoleToInstanceProfile",
-                    "Resource": "*"
-                }
-            }
+            identity = sts.get_caller_identity()
+            caller_arn = identity["Arn"]
+
+            if ":assumed-role/" in caller_arn:
+                role_name = caller_arn.split(
+                    ":assumed-role/"
+                )[1].split("/")[0]
+
+                policy_arn = (
+                    f"arn:aws:iam::{identity['Account']}:role/{role_name}"
+                )
+            else:
+                policy_arn = caller_arn
+
+            actions = [
+                "iam:CreateRole",
+                "iam:AttachRolePolicy",
+                "iam:CreateInstanceProfile",
+                "iam:AddRoleToInstanceProfile"
+            ]
+
+            response = iam.simulate_principal_policy(
+                PolicySourceArn=policy_arn,
+                ActionNames=actions,
+                ResourceArns=["*"]
+            )
 
             results = {}
 
-            for name, permission in checks.items():
-                try:
-                    iam.simulate_principal_policy(
-                        PolicySourceArn=boto3.client("sts").get_caller_identity()["Arn"],
-                        ActionNames=[permission["Action"]],
-                        ResourceArns=["*"]
+            for item in response["EvaluationResults"]:
+                results[item["EvalActionName"]] = {
+                    "decision": item["EvalDecision"],
+                    "missing_context": item.get(
+                        "MissingContextValues", []
                     )
-                    results[name] = "Simulation completed"
-                except Exception as e:
-                    results[name] = str(e)
+                }
 
-            print(json.dumps(results, indent=2))
-      register: iam_write_checks
+            print(json.dumps({
+                "caller": caller_arn,
+                "evaluated_policy": policy_arn,
+                "permissions": results
+            }, indent=2))
+
+      register: iam_permission_result
       changed_when: false
 
-    - name: Display IAM write permission checks
+    - name: Display IAM permission evaluation
       ansible.builtin.debug:
-        var: iam_write_checks.stdout
+        var: iam_permission_result.stdout
