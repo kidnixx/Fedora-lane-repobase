@@ -46,12 +46,6 @@
       no_log: true
       failed_when: false
 
-    - name: Display safe GitHub API diagnostic
-      ansible.builtin.debug:
-        msg:
-          http_status: "{{ github_invitation.status | default('unknown') }}"
-          github_error: "{{ github_invitation.get('json', {}).get('message', 'No error message returned') }}"
-
     - name: Validate GitHub collaborator operation
       ansible.builtin.assert:
         that:
@@ -61,7 +55,4 @@
 
     - name: Display safe GitHub API diagnostic
       ansible.builtin.debug:
-        msg:
-          http_status: "{{ github_invitation.status | default('unknown') }}"
-          github_error: "{{ github_invitation.get('json', {}).get('message', 'No error message returned') }}"
-          validation_details: "{{ github_invitation.get('json', {}).get('errors', []) }}"
+        var: github_invitation.json
