@@ -1,6 +1,6 @@
 ---
 - name: Test AAP connection to a demo Linux host
-  hosts: all
+  hosts: linux
   gather_facts: false
 
   tasks:
