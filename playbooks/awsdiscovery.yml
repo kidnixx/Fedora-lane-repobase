@@ -1,90 +1,68 @@
 
 ---
-- name: Discover AWS resources for Fedora Lane demo
+- name: Final AWS discovery for Fedora Lane demo
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars:
     aws_region: us-east-2
+    rhel9_instance_id: i-0d41864064f90a240
+    rhel9_ami_id: ami-08e728aab89b9de96
+    demo_security_group_id: sg-0f03d6a71ead5d941
 
   tasks:
-    - name: Get available VPCs
-      amazon.aws.ec2_vpc_net_info:
+    - name: Inspect existing RHEL 9 instance
+      amazon.aws.ec2_instance_info:
         region: "{{ aws_region }}"
-      register: vpcs
+        instance_ids:
+          - "{{ rhel9_instance_id }}"
+      register: rhel9_instance
 
-    - name: Get available subnets
-      amazon.aws.ec2_vpc_subnet_info:
-        region: "{{ aws_region }}"
-      register: subnets
-
-    - name: Get security groups
-      amazon.aws.ec2_security_group_info:
-        region: "{{ aws_region }}"
-      register: security_groups
-
-    - name: Get available RHEL 9 images
+    - name: Inspect existing RHEL 9 AMI
       amazon.aws.ec2_ami_info:
         region: "{{ aws_region }}"
-        owners:
-          - "309956199498"
+        image_ids:
+          - "{{ rhel9_ami_id }}"
+      register: rhel9_ami
+
+    - name: Inspect existing demo security group
+      amazon.aws.ec2_security_group_info:
+        region: "{{ aws_region }}"
         filters:
-          architecture: x86_64
-          state: available
-          name: "*RHEL-9*"
-      register: rhel_images
+          group-id: "{{ demo_security_group_id }}"
+      register: demo_sg
 
-    - name: Show VPC summary
+    - name: Display instance configuration
       ansible.builtin.debug:
         msg:
-          - "VPC: {{ item.vpc_id }}"
-          - "CIDR: {{ item.cidr_block }}"
-          - "State: {{ item.state }}"
-      loop: "{{ vpcs.vpcs }}"
+          instance_id: "{{ item.instance_id }}"
+          name: "{{ item.tags.Name | default('Unnamed') }}"
+          state: "{{ item.state.name }}"
+          instance_type: "{{ item.instance_type }}"
+          ami: "{{ item.image_id }}"
+          key_pair: "{{ item.key_name | default('None') }}"
+          subnet: "{{ item.subnet_id }}"
+          vpc: "{{ item.vpc_id }}"
+          private_ip: "{{ item.private_ip_address | default('N/A') }}"
+          public_ip: "{{ item.public_ip_address | default('N/A') }}"
+          security_groups: "{{ item.security_groups | map(attribute='group_id') | list }}"
+          iam_instance_profile: "{{ item.iam_instance_profile | default({}) }}"
+      loop: "{{ rhel9_instance.instances }}"
 
-    - name: Show subnet summary
+    - name: Display AMI configuration
       ansible.builtin.debug:
         msg:
-          - "Subnet: {{ item.subnet_id }}"
-          - "VPC: {{ item.vpc_id }}"
-          - "AZ: {{ item.availability_zone }}"
-          - "CIDR: {{ item.cidr_block }}"
-      loop: "{{ subnets.subnets }}"
+          image_id: "{{ item.image_id }}"
+          name: "{{ item.name }}"
+          owner: "{{ item.owner_id }}"
+          state: "{{ item.state }}"
+          architecture: "{{ item.architecture }}"
+          root_device: "{{ item.root_device_name }}"
+          block_devices: "{{ item.block_device_mappings }}"
+      loop: "{{ rhel9_ami.images }}"
 
-    - name: Show security group summary
-      ansible.builtin.debug:
-        msg:
-          - "Group ID: {{ item.group_id }}"
-          - "Name: {{ item.group_name }}"
-          - "VPC: {{ item.vpc_id }}"
-      loop: "{{ security_groups.security_groups }}"
-
-    - name: Show RHEL AMI summary
-      ansible.builtin.debug:
-        msg:
-          - "AMI: {{ item.image_id }}"
-          - "Name: {{ item.name | default('Not provided') }}"
-          - "Created: {{ item.creation_date }}"
-          - "State: {{ item.state }}"
-          - "Owner: {{ item.owner_id }}"
-      loop: "{{ rhel_images.images | sort(attribute='creation_date', reverse=true) }}"
-
-      
-    - name: Inspect Linux candidate security group rules
-      ansible.builtin.debug:
-        msg:
-          group: "{{ item.group_name }}"
-          id: "{{ item.group_id }}"
-          inbound_rules: "{{ item.ip_permissions }}"
-      loop: >-
-        {{
-          security_groups.security_groups
-          | selectattr('group_id', 'equalto', 'sg-0f03d6a71ead5d941')
-          | list
-        }}
-
-    - name: Display inbound rules for aws-test-sg
+    - name: Display security group inbound rules
       ansible.builtin.debug:
         msg:
           protocol: "{{ item.ip_protocol }}"
@@ -92,32 +70,4 @@
           to_port: "{{ item.to_port | default('all') }}"
           allowed_cidrs: "{{ item.ip_ranges | default([]) | map(attribute='cidr_ip') | list }}"
           source_security_groups: "{{ item.user_id_group_pairs | default([]) | map(attribute='group_id') | list }}"
-      loop: >-
-        {{
-          (
-            security_groups.security_groups
-            | selectattr('group_id', 'equalto', 'sg-0f03d6a71ead5d941')
-            | first
-          ).ip_permissions
-        }}
-
-
-    - name: Discover existing EC2 instances
-      amazon.aws.ec2_instance_info:
-        region: "{{ aws_region }}"
-      register: ec2_instances
-
-
-    - name: Display concise EC2 instance details
-      ansible.builtin.debug:
-        msg: >-
-          Name={{ item.tags.Name | default('Unnamed') }},
-          ID={{ item.instance_id }},
-          State={{ item.state.name }},
-          AMI={{ item.image_id }},
-          Type={{ item.instance_type }},
-          PrivateIP={{ item.private_ip_address | default('N/A') }},
-          SecurityGroups={{ item.security_groups | map(attribute='group_id') | list }}
-      loop: "{{ ec2_instances.instances }}"
-      loop_control:
-        label: "{{ item.instance_id }}"
+      loop: "{{ demo_sg.security_groups[0].ip_permissions }}"
