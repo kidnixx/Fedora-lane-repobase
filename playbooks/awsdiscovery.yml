@@ -84,3 +84,20 @@
           | list
         }}
 
+    - name: Display inbound rules for aws-test-sg
+      ansible.builtin.debug:
+        msg:
+          protocol: "{{ item.ip_protocol }}"
+          from_port: "{{ item.from_port | default('all') }}"
+          to_port: "{{ item.to_port | default('all') }}"
+          allowed_cidrs: "{{ item.ip_ranges | default([]) | map(attribute='cidr_ip') | list }}"
+          source_security_groups: "{{ item.user_id_group_pairs | default([]) | map(attribute='group_id') | list }}"
+      loop: >-
+        {{
+          (
+            security_groups.security_groups
+            | selectattr('group_id', 'equalto', 'sg-0f03d6a71ead5d941')
+            | first
+          ).ip_permissions
+        }}
+
