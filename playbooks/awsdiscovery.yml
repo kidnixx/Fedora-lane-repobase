@@ -14,27 +14,15 @@
         region: "{{ aws_region }}"
       register: vpcs
 
-    - name: Display VPC IDs
-      ansible.builtin.debug:
-        msg: "{{ vpcs.vpcs | map(attribute='vpc_id') | list }}"
-
     - name: Get available subnets
       amazon.aws.ec2_vpc_subnet_info:
         region: "{{ aws_region }}"
       register: subnets
 
-    - name: Display subnet IDs
-      ansible.builtin.debug:
-        msg: "{{ subnets.subnets | map(attribute='subnet_id') | list }}"
-
     - name: Get security groups
       amazon.aws.ec2_security_group_info:
         region: "{{ aws_region }}"
       register: security_groups
-
-    - name: Display security group IDs
-      ansible.builtin.debug:
-        msg: "{{ security_groups.security_groups | map(attribute='group_id') | list }}"
 
     - name: Get available RHEL 9 images
       amazon.aws.ec2_ami_info:
@@ -46,15 +34,19 @@
           state: available
           name: "*RHEL-9*"
       register: rhel_images
-
-    - name: Display recent RHEL images
+      
+    - name: Display VPC details
       ansible.builtin.debug:
-        msg: >-
-          {{
-            (
-              rhel_images.images
-              | sort(attribute='creation_date', reverse=true)
-            )[:5]
-            | map(attribute='image_id')
-            | list
-          }}
+        var: vpcs.vpcs
+
+    - name: Display subnet details
+      ansible.builtin.debug:
+        var: subnets.subnets
+
+    - name: Display security group details
+      ansible.builtin.debug:
+        var: security_groups.security_groups
+
+    - name: Display RHEL AMI details
+      ansible.builtin.debug:
+        var: rhel_images.images
