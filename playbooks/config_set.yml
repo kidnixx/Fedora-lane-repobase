@@ -1,0 +1,72 @@
+
+---
+- name: Configure Fedora Lane staging server
+  hosts: fedora_lane_staging
+  become: true
+  gather_facts: true
+
+  vars:
+    staging_hostname: fedora-lane-staging
+    staging_packages:
+      - curl
+      - wget
+      - vim-enhanced
+      - git
+      - tar
+      - unzip
+      - jq
+
+  tasks:
+    - name: Set staging server hostname
+      ansible.builtin.hostname:
+        name: "{{ staging_hostname }}"
+      tags:
+        - hostname
+
+    - name: Install staging utilities
+      ansible.builtin.dnf:
+        name: "{{ staging_packages }}"
+        state: present
+      tags:
+        - packages
+
+    - name: Create Fedora Lane application directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /opt/fedora-lane
+        - /opt/fedora-lane/config
+        - /var/log/fedora-lane
+      tags:
+        - directories
+
+    - name: Configure staging MOTD
+      ansible.builtin.copy:
+        dest: /etc/motd
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ==========================================
+             FEDORA LANE - STAGING ENVIRONMENT
+          ==========================================
+          Managed by Ansible Automation Platform.
+          Environment: STAGING
+          Host: {{ staging_hostname }}
+          ==========================================
+      tags:
+        - motd
+
+    - name: Verify staging configuration
+      ansible.builtin.debug:
+        msg:
+          hostname: "{{ ansible_facts.hostname }}"
+          operating_system: "{{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          architecture: "{{ ansible_facts.architecture }}"
+          configuration: "Fedora Lane staging baseline applied"
+      tags:
+        - verify
