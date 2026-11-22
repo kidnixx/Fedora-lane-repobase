@@ -6,15 +6,12 @@
   gather_facts: false
 
   tasks:
-    - name: Check SSM managed instance registration
-      ansible.builtin.command:
-        cmd: >
-          aws ssm describe-instance-information
-          --region us-east-2
-          --filters Key=InstanceIds,Values=i-0bc378a668bdc9ca5
-      register: ssm_result
-      changed_when: false
+    - name: Retrieve SSM managed instance information
+      amazon.aws.ssm_instance_info:
+        region: us-east-2
+      register: ssm_instances
 
-    - name: Display SSM registration
+    - name: Display registration status
       ansible.builtin.debug:
-        var: ssm_result.stdout
+        msg: >-
+          {{ ssm_instances }}
