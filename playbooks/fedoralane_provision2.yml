@@ -18,8 +18,8 @@
     effective_owner: "{{ request_owner | default('demo-user') | trim }}"
     effective_environment: "{{ target_environment | default('staging') }}"
     effective_instance_type: "{{ requested_instance_type | default('t3.small') }}"
-    effective_disk_size: "{{ root_volume_size | default(20) | int }}"
-
+    effective_disk_size: "{{ (root_volume_size | default(20) | string) | int }}"
+  
   tasks:
     - name: Validate staging request
       ansible.builtin.assert:
@@ -29,8 +29,8 @@
           - effective_owner is match('^[A-Za-z0-9][A-Za-z0-9 _.-]*$')
           - effective_environment in ['development', 'testing', 'staging']
           - effective_instance_type in ['t3.small', 't3.medium']
-          - effective_disk_size >= 20
-          - effective_disk_size <= 100
+          - (effective_disk_size | int) >= 20
+          - (effective_disk_size | int) <= 100
         fail_msg: "Invalid request. Check owner, environment, instance type and disk size."
 
     - name: Generate resource name
