@@ -1,0 +1,68 @@
+
+---
+- name: Fedora Lane - GitHub Developer Onboarding
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    github_api_url: "https://api.github.com"
+    github_api_version: "2022-11-28"
+    github_permission: "push"
+
+  tasks:
+    - name: Validate onboarding request
+      ansible.builtin.assert:
+        that:
+          - developer_name is defined
+          - developer_email is defined
+          - github_username is defined
+          - github_username | length > 0
+          - github_repo_name is defined
+          - github_repo_owner is defined
+          - github_repo_owner | length > 0
+          - lookup('env', 'GITHUB_TOKEN') | length > 0
+        fail_msg: "Missing onboarding details or GitHub API credential."
+
+    - name: Add developer as GitHub repository collaborator
+      ansible.builtin.uri:
+        url: >-
+          {{ github_api_url }}/repos/{{ github_repo_owner }}/{{ github_repo_name }}/collaborators/{{ github_username }}
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'GITHUB_TOKEN') }}"
+          Accept: "application/vnd.github+json"
+          X-GitHub-Api-Version: "{{ github_api_version }}"
+        body_format: json
+        body:
+          permission: "{{ github_permission }}"
+        status_code:
+          - 201
+          - 204
+        return_content: true
+        validate_certs: true
+      register: github_invitation
+      no_log: true
+
+    - name: Display onboarding result
+      ansible.builtin.debug:
+        msg:
+          report_title: "FEDORA LANE - DEVELOPER ONBOARDING"
+          developer: "{{ developer_name }}"
+          email: "{{ developer_email }}"
+          github_username: "{{ github_username }}"
+          repository: "{{ github_repo_owner }}/{{ github_repo_name }}"
+          permission: "{{ github_permission }}"
+          api_status: "{{ github_invitation.status }}"
+          result: >-
+            {{ 'Developer already has repository access'
+               if github_invitation.status == 204
+               else 'GitHub collaborator invitation created successfully' }}
+          overall_status: "SUCCESS"
+
+    - name: Publish onboarding result
+      ansible.builtin.set_stats:
+        data:
+          developer_onboarding_status: "SUCCESS"
+          developer_github_username: "{{ github_username }}"
+          developer_github_repository: "{{ github_repo_owner }}/{{ github_repo_name }}"
