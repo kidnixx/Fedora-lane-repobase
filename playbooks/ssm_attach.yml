@@ -1,0 +1,135 @@
+
+---
+- name: Enable SSM access for Fedora Lane staging
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Create and attach SSM IAM instance profile
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3
+            import json
+            import time
+
+            region = "us-east-2"
+            instance_id = "i-0bc378a668bdc9ca5"
+            role_name = "FedoraLaneSSMRole"
+            profile_name = "FedoraLaneSSMInstanceProfile"
+
+            iam = boto3.client("iam")
+            ec2 = boto3.client("ec2", region_name=region)
+
+            policy_arn = (
+                "arn:aws:iam::aws:policy/"
+                "AmazonSSMManagedInstanceCore"
+            )
+
+            trust_policy = {
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole"
+                }]
+            }
+
+            # 1. Create or reuse the IAM role
+            try:
+                role = iam.get_role(RoleName=role_name)["Role"]
+                print("Existing IAM role found.")
+            except iam.exceptions.NoSuchEntityException:
+                role = iam.create_role(
+                    RoleName=role_name,
+                    AssumeRolePolicyDocument=json.dumps(trust_policy),
+                    Description="SSM access for Fedora Lane staging EC2"
+                )["Role"]
+                print("Created IAM role.")
+
+            # 2. Attach the AWS managed SSM policy
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=policy_arn
+            )
+            print("SSM managed policy attached.")
+
+            # 3. Create or reuse the instance profile
+            try:
+                profile = iam.get_instance_profile(
+                    InstanceProfileName=profile_name
+                )["InstanceProfile"]
+                print("Existing instance profile found.")
+            except iam.exceptions.NoSuchEntityException:
+                profile = iam.create_instance_profile(
+                    InstanceProfileName=profile_name
+                )["InstanceProfile"]
+                print("Created instance profile.")
+
+            # 4. Add role if not already present
+            role_names = [
+                item["RoleName"] for item in profile["Roles"]
+            ]
+
+            if role_name not in role_names:
+                iam.add_role_to_instance_profile(
+                    InstanceProfileName=profile_name,
+                    RoleName=role_name
+                )
+                print("Added role to instance profile.")
+
+            time.sleep(10)
+
+            # 5. Check current EC2 profile association
+            response = ec2.describe_instances(
+                InstanceIds=[instance_id]
+            )
+
+            instance = response["Reservations"][0]["Instances"][0]
+
+            associations = instance.get(
+                "IamInstanceProfile", {}
+            )
+
+            if associations:
+                print(
+                    "Instance already has an IAM profile:",
+                    associations.get("Arn")
+                )
+                raise SystemExit(
+                    "Review existing profile before replacing it."
+                )
+
+            # 6. Associate profile with EC2
+            profile = iam.get_instance_profile(
+                InstanceProfileName=profile_name
+            )["InstanceProfile"]
+
+            result = ec2.associate_iam_instance_profile(
+                IamInstanceProfile={
+                    "Arn": profile["Arn"]
+                },
+                InstanceId=instance_id
+            )
+
+            print(json.dumps({
+                "instance_id": instance_id,
+                "role": role_name,
+                "instance_profile": profile_name,
+                "association_id": result[
+                    "IamInstanceProfileAssociation"
+                ]["AssociationId"],
+                "status": result[
+                    "IamInstanceProfileAssociation"
+                ]["State"]
+            }, indent=2))
+
+      register: ssm_setup
+      changed_when: true
+
+    - name: Display SSM setup result
+      ansible.builtin.debug:
+        var: ssm_setup.stdout
