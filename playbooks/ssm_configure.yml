@@ -5,7 +5,17 @@
   connection: local
   gather_facts: false
 
+  vars:
+    aws_region: us-east-2
+
   tasks:
+    - name: Validate instance ID
+      ansible.builtin.assert:
+        that:
+          - fedora_lane_instance_id is defined
+          - fedora_lane_instance_id | length > 0
+        fail_msg: "No instance ID received. Run this job through the provisioning workflow."
+
     - name: Apply staging configuration through SSM
       ansible.builtin.command:
         argv:
@@ -15,7 +25,9 @@
             import boto3, json, time, sys
 
             instance_id = "{{ fedora_lane_instance_id }}"
-            ssm = boto3.client("ssm", region_name="us-east-2")
+            region = "{{ aws_region }}"
+
+            ssm = boto3.client("ssm", region_name=region)
 
             script = """#!/bin/bash
             set -e
@@ -23,15 +35,15 @@
             dnf install -y curl wget vim-enhanced git tar unzip jq
             mkdir -p /opt/fedora-lane/config /var/log/fedora-lane
             chmod 755 /opt/fedora-lane /opt/fedora-lane/config /var/log/fedora-lane
+
             cat > /etc/motd <<'EOF'
             ==========================================
                FEDORA LANE - STAGING ENVIRONMENT
             ==========================================
             Managed by Ansible Automation Platform.
-            Environment: STAGING
-            Host: fedora-lane-staging
             ==========================================
             EOF
+
             echo "FEDORA_LANE_CONFIGURATION_SUCCESS"
             """
 
@@ -57,6 +69,7 @@
                                   "Cancelled", "Undeliverable",
                                   "Terminated"]:
                         print(json.dumps({
+                            "instance_id": instance_id,
                             "command_id": command_id,
                             "status": status,
                             "exit_code": result.get("ResponseCode"),
@@ -72,6 +85,7 @@
             else:
                 print("Timed out waiting for SSM command completion")
                 sys.exit(1)
+
       register: configuration_result
       changed_when: true
 
