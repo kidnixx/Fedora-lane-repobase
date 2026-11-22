@@ -1,0 +1,36 @@
+
+---
+- name: Check AWS Systems Manager IAM readiness
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Retrieve IAM instance profiles
+      amazon.aws.iam_instance_profile_info:
+      register: iam_profiles
+
+    - name: Display instance profiles and associated roles
+      ansible.builtin.debug:
+        msg:
+          profile: "{{ item.name }}"
+          roles: "{{ item.roles | default([]) | map(attribute='role_name') | list }}"
+      loop: "{{ iam_profiles.instance_profiles | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Retrieve IAM role details
+      amazon.aws.iam_role_info:
+        name: "{{ item.1.role_name }}"
+      loop: "{{ iam_profiles.instance_profiles | default([]) | subelements('roles', skip_missing=True) }}"
+      register: iam_role_details
+      loop_control:
+        label: "{{ item.1.role_name }}"
+
+    - name: Display attached IAM policies
+      ansible.builtin.debug:
+        msg:
+          role: "{{ item.item.1.role_name }}"
+          attached_policies: "{{ item.iam_roles[0].attached_policies | default([]) | map(attribute='policy_name') | list }}"
+      loop: "{{ iam_role_details.results | default([]) }}"
+      when: item.iam_roles | default([]) | length > 0
