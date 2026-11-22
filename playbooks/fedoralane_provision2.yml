@@ -1,0 +1,147 @@
+
+---
+- name: Provision Fedora Lane staging environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aws_region: us-east-2
+    aws_vpc_id: vpc-0f9c73f7d581555ac
+    aws_subnet_id: subnet-0dd9be84b04c86e58
+
+    rhel_ami_id: ami-08e728aab89b9de96
+    security_group_id: sg-0eee73714ec63d194
+    instance_profile_name: FedoraLaneSSMInstanceProfile
+
+    request_owner: "{{ request_owner | default('demo-user') }}"
+    target_environment: "{{ target_environment | default('staging') }}"
+    requested_instance_type: "{{ requested_instance_type | default('t3.small') }}"
+    root_volume_size: "{{ root_volume_size | default(20) | int }}"
+
+  tasks:
+    - name: Validate staging request
+      ansible.builtin.assert:
+        that:
+          - request_owner | length > 0
+          - request_owner | length <= 30
+          - request_owner is match('^[A-Za-z0-9][A-Za-z0-9 _.-]*$')
+          - target_environment in ['development', 'testing', 'staging']
+          - requested_instance_type in ['t3.small', 't3.medium']
+          - root_volume_size | int >= 20
+          - root_volume_size | int <= 100
+        fail_msg: "Invalid request. Check owner, environment, instance type and disk size."
+
+    - name: Generate resource name
+      ansible.builtin.set_fact:
+        owner_slug: "{{ request_owner | lower | regex_replace('[^a-z0-9]+', '-') | regex_replace('(^-|-$)', '') }}"
+
+    - name: Generate unique staging instance name
+      ansible.builtin.set_fact:
+        instance_name: "fedora-lane-{{ target_environment }}-{{ requested_instance_type }}-{{ root_volume_size }}gb-{{ owner_slug }}"
+
+    - name: Find an existing instance for this request
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Name": "{{ instance_name }}"
+          "instance-state-name": "running"
+      register: existing_instances
+
+    - name: Prevent duplicate instances
+      ansible.builtin.assert:
+        that:
+          - existing_instances.instances | length <= 1
+        fail_msg: "Multiple matching instances found. Review AWS resources before proceeding."
+
+    - name: Launch RHEL staging instance
+      amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
+        name: "{{ instance_name }}"
+        image_id: "{{ rhel_ami_id }}"
+        instance_type: "{{ requested_instance_type }}"
+
+        vpc_subnet_id: "{{ aws_subnet_id }}"
+        security_groups:
+          - "{{ security_group_id }}"
+
+        iam_instance_profile: "{{ instance_profile_name }}"
+
+        network:
+          assign_public_ip: true
+
+        user_data: |
+          #!/bin/bash
+          set -eux
+          dnf install -y https://s3.us-east-2.amazonaws.com/amazon-ssm-us-east-2/latest/linux_amd64/amazon-ssm-agent.rpm
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+
+        volumes:
+          - device_name: /dev/sda1
+            ebs:
+              volume_size: "{{ root_volume_size | int }}"
+              volume_type: gp3
+              encrypted: true
+              delete_on_termination: true
+
+        state: running
+        wait: true
+
+        tags:
+          Name: "{{ instance_name }}"
+          Project: FedoraLane
+          Environment: "{{ target_environment }}"
+          ApplicationOwner: "{{ request_owner }}"
+          ManagedBy: Ansible
+          Demo: fedora-lane-request
+
+      register: launched_instance
+      when: existing_instances.instances | length == 0
+
+    - name: Reuse existing matching instance
+      amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ existing_instances.instances[0].instance_id }}"
+        state: running
+        wait: true
+      register: reused_instance
+      when: existing_instances.instances | length == 1
+
+    - name: Capture newly launched instance details
+      ansible.builtin.set_fact:
+        final_instance: "{{ launched_instance.instances[0] }}"
+      when: existing_instances.instances | length == 0
+
+    - name: Capture reused instance details
+      ansible.builtin.set_fact:
+        final_instance: "{{ reused_instance.instances[0] }}"
+      when: existing_instances.instances | length == 1
+
+    - name: Publish instance details to workflow
+      ansible.builtin.set_stats:
+        aggregate: false
+        data:
+          fedora_lane_instance_id: "{{ final_instance.instance_id }}"
+          fedora_lane_public_ip: "{{ final_instance.public_ip_address | default('N/A') }}"
+          fedora_lane_private_ip: "{{ final_instance.private_ip_address | default('N/A') }}"
+          fedora_lane_instance_name: "{{ instance_name }}"
+          fedora_lane_region: "{{ aws_region }}"
+          fedora_lane_owner: "{{ request_owner }}"
+          fedora_lane_environment: "{{ target_environment }}"
+          fedora_lane_instance_type: "{{ requested_instance_type }}"
+          fedora_lane_disk_size: "{{ root_volume_size | int }}"
+
+    - name: Display provisioning summary
+      ansible.builtin.debug:
+        msg:
+          result: "Fedora Lane infrastructure provisioned"
+          instance_id: "{{ final_instance.instance_id }}"
+          instance_name: "{{ instance_name }}"
+          public_ip: "{{ final_instance.public_ip_address | default('N/A') }}"
+          private_ip: "{{ final_instance.private_ip_address | default('N/A') }}"
+          instance_type: "{{ requested_instance_type }}"
+          disk_size_gb: "{{ root_volume_size }}"
+          environment: "{{ target_environment }}"
+          owner: "{{ request_owner }}"
