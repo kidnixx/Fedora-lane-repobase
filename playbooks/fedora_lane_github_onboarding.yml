@@ -24,6 +24,7 @@
           - lookup('env', 'GITHUB_TOKEN') | length > 0
         fail_msg: "Missing onboarding details or GitHub API credential."
 
+   
     - name: Add developer as GitHub repository collaborator
       ansible.builtin.uri:
         url: >-
@@ -41,7 +42,7 @@
           - 204
         return_content: true
         validate_certs: true
-           register: github_invitation
+      register: github_invitation
       no_log: true
       failed_when: false
 
@@ -49,7 +50,7 @@
       ansible.builtin.debug:
         msg:
           http_status: "{{ github_invitation.status | default('unknown') }}"
-          github_error: "{{ github_invitation.json.message | default('No error message returned') }}"
+          github_error: "{{ github_invitation.get('json', {}).get('message', 'No error message returned') }}"
 
     - name: Validate GitHub collaborator operation
       ansible.builtin.assert:
