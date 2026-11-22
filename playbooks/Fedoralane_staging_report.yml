@@ -1,0 +1,31 @@
+
+---
+- name: Generate Fedora Lane staging report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Validate workflow results
+      ansible.builtin.assert:
+        that:
+          - fedora_lane_instance_id is defined
+          - fedora_lane_verification_status | default('') == 'PASSED'
+        fail_msg: "Staging workflow did not pass verification."
+        success_msg: "Staging instance and verification results received."
+
+    - name: Display final staging report
+      ansible.builtin.debug:
+        msg:
+          report_title: "FEDORA LANE - STAGING DEPLOYMENT REPORT"
+          overall_status: "SUCCESS"
+          owner: "{{ fedora_lane_owner | default('N/A') }}"
+          environment: "{{ fedora_lane_environment | default('N/A') }}"
+          instance_name: "{{ fedora_lane_instance_name | default('N/A') }}"
+          instance_id: "{{ fedora_lane_instance_id }}"
+          instance_type: "{{ fedora_lane_instance_type | default('N/A') }}"
+          disk_size_gb: "{{ fedora_lane_disk_size | default('N/A') }}"
+          public_ip: "{{ fedora_lane_public_ip | default('N/A') }}"
+          private_ip: "{{ fedora_lane_private_ip | default('N/A') }}"
+          verification: "{{ fedora_lane_verification_status }}"
+          final_result: "FEDORA LANE STAGING DEPLOYMENT COMPLETED SUCCESSFULLY"
