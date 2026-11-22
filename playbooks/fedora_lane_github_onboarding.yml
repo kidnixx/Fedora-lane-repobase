@@ -57,3 +57,11 @@
         that:
           - github_invitation.status | default(0) | int in [201, 204]
         fail_msg: "GitHub collaborator operation failed. Review the safe diagnostic above."
+
+
+    - name: Display safe GitHub API diagnostic
+      ansible.builtin.debug:
+        msg:
+          http_status: "{{ github_invitation.status | default('unknown') }}"
+          github_error: "{{ github_invitation.get('json', {}).get('message', 'No error message returned') }}"
+          validation_details: "{{ github_invitation.get('json', {}).get('errors', []) }}"
