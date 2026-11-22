@@ -1,0 +1,20 @@
+
+---
+- name: Check Fedora Lane instance SSM registration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check SSM managed instance registration
+      ansible.builtin.command:
+        cmd: >
+          aws ssm describe-instance-information
+          --region us-east-2
+          --filters Key=InstanceIds,Values=i-0bc378a668bdc9ca5
+      register: ssm_result
+      changed_when: false
+
+    - name: Display SSM registration
+      ansible.builtin.debug:
+        var: ssm_result.stdout
