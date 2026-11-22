@@ -1,0 +1,163 @@
+
+---
+- name: Verify Fedora Lane staging environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aws_region: us-east-2
+
+  tasks:
+    - name: Validate workflow instance ID
+      ansible.builtin.assert:
+        that:
+          - fedora_lane_instance_id is defined
+          - fedora_lane_instance_id | length > 0
+        fail_msg: "Instance ID was not received from the provisioning workflow."
+
+    - name: Check EC2 instance state
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ fedora_lane_instance_id }}"
+      register: ec2_check
+
+    - name: Confirm EC2 is running
+      ansible.builtin.assert:
+        that:
+          - ec2_check.instances | length == 1
+          - ec2_check.instances[0].state.name == 'running'
+        fail_msg: "The staging EC2 instance is not running."
+
+    - name: Check SSM agent connectivity
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3, json, sys
+
+            instance_id = "{{ fedora_lane_instance_id }}"
+            ssm = boto3.client("ssm", region_name="{{ aws_region }}")
+
+            response = ssm.describe_instance_information(
+                Filters=[
+                    {
+                        "Key": "InstanceIds",
+                        "Values": [instance_id]
+                    }
+                ]
+            )
+
+            instances = response["InstanceInformationList"]
+
+            if not instances:
+                print(json.dumps({
+                    "instance_id": instance_id,
+                    "ssm_status": "NotFound"
+                }))
+                sys.exit(1)
+
+            info = instances[0]
+
+            result = {
+                "instance_id": instance_id,
+                "ssm_status": info["PingStatus"],
+                "agent_version": info.get("AgentVersion")
+            }
+
+            print(json.dumps(result))
+
+            if info["PingStatus"] != "Online":
+                sys.exit(1)
+      register: ssm_check
+      changed_when: false
+
+    - name: Verify Fedora Lane configuration
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3, json, time, sys
+
+            instance_id = "{{ fedora_lane_instance_id }}"
+            ssm = boto3.client("ssm", region_name="{{ aws_region }}")
+
+            script = """#!/bin/bash
+            set -e
+
+            echo "HOSTNAME=$(hostname)"
+
+            test -d /opt/fedora-lane
+            test -d /opt/fedora-lane/config
+            test -d /var/log/fedora-lane
+
+            rpm -q git curl wget vim-enhanced tar unzip jq
+
+            grep -q "FEDORA LANE - STAGING ENVIRONMENT" /etc/motd
+
+            echo "FEDORA_LANE_VERIFICATION_SUCCESS"
+            """
+
+            response = ssm.send_command(
+                InstanceIds=[instance_id],
+                DocumentName="AWS-RunShellScript",
+                Parameters={"commands": [script]},
+                TimeoutSeconds=180
+            )
+
+            command_id = response["Command"]["CommandId"]
+
+            for attempt in range(60):
+                time.sleep(5)
+
+                try:
+                    result = ssm.get_command_invocation(
+                        CommandId=command_id,
+                        InstanceId=instance_id
+                    )
+
+                    status = result["Status"]
+
+                    if status in [
+                        "Success", "Failed", "TimedOut",
+                        "Cancelled", "Undeliverable", "Terminated"
+                    ]:
+                        print(json.dumps({
+                            "instance_id": instance_id,
+                            "status": status,
+                            "exit_code": result.get("ResponseCode"),
+                            "stdout": result.get("StandardOutputContent"),
+                            "stderr": result.get("StandardErrorContent")
+                        }, indent=2))
+
+                        if status != "Success":
+                            sys.exit(1)
+
+                        break
+
+                except ssm.exceptions.InvocationDoesNotExist:
+                    continue
+            else:
+                print("Timed out waiting for verification")
+                sys.exit(1)
+      register: configuration_check
+      changed_when: false
+
+    - name: Publish verification result
+      ansible.builtin.set_stats:
+        aggregate: false
+        data:
+          fedora_lane_verification_status: "PASSED"
+          fedora_lane_verified_instance_id: "{{ fedora_lane_instance_id }}"
+
+    - name: Display final verification summary
+      ansible.builtin.debug:
+        msg:
+          result: "FEDORA LANE STAGING VERIFICATION PASSED"
+          instance_id: "{{ fedora_lane_instance_id }}"
+          ec2_state: "{{ ec2_check.instances[0].state.name }}"
+          ssm_result: "{{ ssm_check.stdout }}"
+          configuration_result: "{{ configuration_check.stdout }}"
