@@ -1,0 +1,31 @@
+
+---
+- name: Generate Fedora Lane failure report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    failure_stage: "{{ fedora_lane_failed_stage | default('Unknown stage') }}"
+    failure_instance: "{{ fedora_lane_instance_id | default('Not available') }}"
+
+  tasks:
+    - name: Display failure report
+      ansible.builtin.debug:
+        msg:
+          report_title: "FEDORA LANE - STAGING FAILURE REPORT"
+          overall_status: "FAILED"
+          failed_stage: "{{ failure_stage }}"
+          instance_id: "{{ failure_instance }}"
+          owner: "{{ fedora_lane_owner | default('N/A') }}"
+          environment: "{{ fedora_lane_environment | default('N/A') }}"
+          instance_name: "{{ fedora_lane_instance_name | default('N/A') }}"
+          public_ip: "{{ fedora_lane_public_ip | default('N/A') }}"
+          private_ip: "{{ fedora_lane_private_ip | default('N/A') }}"
+          verification: "{{ fedora_lane_verification_status | default('NOT COMPLETED') }}"
+          recommended_action: "Review the failed job output and investigate the cause."
+          final_result: "FEDORA LANE STAGING DEPLOYMENT REQUIRES ATTENTION"
+
+    - name: Mark failure report as generated
+      ansible.builtin.debug:
+        msg: "Failure report generated successfully."
