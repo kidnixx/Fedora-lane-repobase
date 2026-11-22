@@ -1,0 +1,40 @@
+
+---
+- name: Check IAM permissions for Fedora Lane
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check whether AAP can inspect IAM roles
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3
+            import json
+
+            iam = boto3.client("iam")
+
+            checks = {}
+
+            actions = {
+                "list_roles": lambda: iam.list_roles(MaxItems=1),
+                "list_instance_profiles": lambda: iam.list_instance_profiles(MaxItems=1),
+            }
+
+            for name, action in actions.items():
+                try:
+                    action()
+                    checks[name] = "ALLOWED"
+                except Exception as e:
+                    checks[name] = str(e)
+
+            print(json.dumps(checks, indent=2))
+      register: iam_checks
+      changed_when: false
+
+    - name: Display IAM permission results
+      ansible.builtin.debug:
+        var: iam_checks.stdout
