@@ -69,3 +69,18 @@
           - "State: {{ item.state }}"
           - "Owner: {{ item.owner_id }}"
       loop: "{{ rhel_images.images | sort(attribute='creation_date', reverse=true) }}"
+
+      
+    - name: Inspect Linux candidate security group rules
+      ansible.builtin.debug:
+        msg:
+          group: "{{ item.group_name }}"
+          id: "{{ item.group_id }}"
+          inbound_rules: "{{ item.ip_permissions }}"
+      loop: >-
+        {{
+          security_groups.security_groups
+          | selectattr('group_id', 'equalto', 'sg-0f03d6a71ead5d941')
+          | list
+        }}
+
