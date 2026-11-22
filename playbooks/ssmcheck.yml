@@ -1,16 +1,12 @@
 
 ---
-- name: Verify Fedora Lane SSM registration
+- name: Diagnose Fedora Lane SSM connectivity
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Wait for IAM profile propagation
-      ansible.builtin.pause:
-        seconds: 30
-
-    - name: Check SSM managed instance registration
+    - name: Inspect EC2 instance and network configuration
       ansible.builtin.command:
         argv:
           - python3
@@ -19,25 +15,83 @@
             import boto3
             import json
 
-            client = boto3.client("ssm", region_name="us-east-2")
+            region = "us-east-2"
+            instance_id = "i-0bc378a668bdc9ca5"
 
-            response = client.describe_instance_information(
+            ec2 = boto3.client("ec2", region_name=region)
+
+            response = ec2.describe_instances(
+                InstanceIds=[instance_id]
+            )
+
+            instance = response["Reservations"][0]["Instances"][0]
+
+            association = ec2.describe_iam_instance_profile_associations(
                 Filters=[
                     {
-                        "Key": "InstanceIds",
-                        "Values": ["i-0bc378a668bdc9ca5"]
+                        "Name": "instance-id",
+                        "Values": [instance_id]
                     }
                 ]
             )
 
-            print(json.dumps(
-                response.get("InstanceInformationList", []),
-                indent=2,
-                default=str
-            ))
-      register: ssm_result
+            subnet_id = instance["SubnetId"]
+            vpc_id = instance["VpcId"]
+
+            routes = ec2.describe_route_tables(
+                Filters=[
+                    {
+                        "Name": "association.subnet-id",
+                        "Values": [subnet_id]
+                    }
+                ]
+            )["RouteTables"]
+
+            if not routes:
+                routes = ec2.describe_route_tables(
+                    Filters=[
+                        {
+                            "Name": "vpc-id",
+                            "Values": [vpc_id]
+                        },
+                        {
+                            "Name": "association.main",
+                            "Values": ["true"]
+                        }
+                    ]
+                )["RouteTables"]
+
+            route_info = []
+
+            for table in routes:
+                for route in table["Routes"]:
+                    route_info.append({
+                        "destination": route.get("DestinationCidrBlock"),
+                        "gateway": route.get("GatewayId"),
+                        "state": route.get("State")
+                    })
+
+            result = {
+                "instance_id": instance_id,
+                "state": instance["State"]["Name"],
+                "public_ip": instance.get("PublicIpAddress"),
+                "subnet_id": subnet_id,
+                "vpc_id": vpc_id,
+                "iam_profile": instance.get("IamInstanceProfile"),
+                "profile_association": [
+                    {
+                        "state": item["State"],
+                        "association_id": item["AssociationId"]
+                    }
+                    for item in association["IamInstanceProfileAssociations"]
+                ],
+                "routes": route_info
+            }
+
+            print(json.dumps(result, indent=2, default=str))
+      register: network_check
       changed_when: false
 
-    - name: Display SSM registration
+    - name: Display connectivity diagnosis
       ansible.builtin.debug:
-        var: ssm_result.stdout
+        var: network_check.stdout
