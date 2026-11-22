@@ -1,12 +1,12 @@
 
 ---
-- name: Check Fedora Lane SSM registration
+- name: Check Fedora Lane EC2 IAM profile
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Query AWS Systems Manager
+    - name: Retrieve EC2 instance IAM profile
       ansible.builtin.command:
         argv:
           - python3
@@ -15,24 +15,21 @@
             import boto3
             import json
 
-            client = boto3.client("ssm", region_name="us-east-2")
-            response = client.describe_instance_information(
-                Filters=[
-                    {
-                        "Key": "InstanceIds",
-                        "Values": ["i-0bc378a668bdc9ca5"]
-                    }
-                ]
+            ec2 = boto3.client("ec2", region_name="us-east-2")
+            response = ec2.describe_instances(
+                InstanceIds=["i-0bc378a668bdc9ca5"]
             )
 
-            print(json.dumps(
-                response.get("InstanceInformationList", []),
-                default=str,
-                indent=2
-            ))
-      register: ssm_result
+            instance = response["Reservations"][0]["Instances"][0]
+
+            print(json.dumps({
+                "instance_id": instance["InstanceId"],
+                "iam_instance_profile": instance.get("IamInstanceProfile"),
+                "state": instance["State"]["Name"]
+            }, indent=2, default=str))
+      register: instance_profile
       changed_when: false
 
-    - name: Display SSM registration result
+    - name: Display IAM profile information
       ansible.builtin.debug:
-        var: ssm_result.stdout
+        var: instance_profile.stdout
