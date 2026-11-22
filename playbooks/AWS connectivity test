@@ -1,0 +1,14 @@
+---
+- name: Verify AAP can reach AWS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check the AWS identity
+      amazon.aws.aws_caller_info:
+      register: aws_identity
+
+    - name: Show the AWS account
+      ansible.builtin.debug:
+        msg: "Connected to AWS account {{ aws_identity.account }}"
