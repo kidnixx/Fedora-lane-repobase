@@ -41,28 +41,18 @@
           - 204
         return_content: true
         validate_certs: true
-      register: github_invitation
+           register: github_invitation
       no_log: true
+      failed_when: false
 
-    - name: Display onboarding result
+    - name: Display safe GitHub API diagnostic
       ansible.builtin.debug:
         msg:
-          report_title: "FEDORA LANE - DEVELOPER ONBOARDING"
-          developer: "{{ developer_name }}"
-          email: "{{ developer_email }}"
-          github_username: "{{ github_username }}"
-          repository: "{{ github_repo_owner }}/{{ github_repo_name }}"
-          permission: "{{ github_permission }}"
-          api_status: "{{ github_invitation.status }}"
-          result: >-
-            {{ 'Developer already has repository access'
-               if github_invitation.status == 204
-               else 'GitHub collaborator invitation created successfully' }}
-          overall_status: "SUCCESS"
+          http_status: "{{ github_invitation.status | default('unknown') }}"
+          github_error: "{{ github_invitation.json.message | default('No error message returned') }}"
 
-    - name: Publish onboarding result
-      ansible.builtin.set_stats:
-        data:
-          developer_onboarding_status: "SUCCESS"
-          developer_github_username: "{{ github_username }}"
-          developer_github_repository: "{{ github_repo_owner }}/{{ github_repo_name }}"
+    - name: Validate GitHub collaborator operation
+      ansible.builtin.assert:
+        that:
+          - github_invitation.status | default(0) | int in [201, 204]
+        fail_msg: "GitHub collaborator operation failed. Review the safe diagnostic above."
