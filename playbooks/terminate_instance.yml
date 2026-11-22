@@ -1,0 +1,60 @@
+
+---
+- name: Terminate old Fedora Lane staging instance
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aws_region: us-east-2
+    old_instance_id: i-0bc378a668bdc9ca5
+    replacement_instance_id: i-0620229f42b87eb07
+
+  tasks:
+    - name: Verify old instance identity
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ old_instance_id }}"
+      register: old_instance
+
+    - name: Verify the instance is the original Fedora Lane server
+      ansible.builtin.assert:
+        that:
+          - old_instance.instances | length == 1
+          - old_instance.instances[0].instance_id == old_instance_id
+          - old_instance.instances[0].tags.Demo == "fedora-lane-staging"
+          - old_instance.instances[0].state.name in ["running", "stopped"]
+        fail_msg: "Instance verification failed. Nothing will be terminated."
+
+    - name: Verify replacement is still running
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ replacement_instance_id }}"
+      register: replacement
+
+    - name: Protect the replacement instance
+      ansible.builtin.assert:
+        that:
+          - replacement.instances | length == 1
+          - replacement.instances[0].state.name == "running"
+          - replacement.instances[0].tags.Demo == "fedora-lane-staging-ssm"
+        fail_msg: "Replacement verification failed. Old instance will be retained."
+
+    - name: Terminate original staging instance
+      amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
+        instance_ids:
+          - "{{ old_instance_id }}"
+        state: absent
+        wait: true
+      register: termination
+
+    - name: Display termination result
+      ansible.builtin.debug:
+        msg:
+          terminated_instance: "{{ old_instance_id }}"
+          replacement_instance: "{{ replacement_instance_id }}"
+          replacement_state: "{{ replacement.instances[0].state.name }}"
+          result: "Original staging instance termination completed"
