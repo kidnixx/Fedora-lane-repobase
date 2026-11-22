@@ -1,7 +1,8 @@
 
 ---
 - name: Discover AWS resources for Fedora Lane demo
-  hosts: linux
+  hosts: localhost
+  connection: local
   gather_facts: false
 
   vars:
