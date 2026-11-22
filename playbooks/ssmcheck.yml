@@ -1,79 +1,41 @@
 
 ---
-- name: Inspect Fedora Lane outbound network access
+- name: Check Fedora Lane SSM registration
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Inspect security groups, network ACL and VPC DNS
+    - name: Check SSM managed instance status
       ansible.builtin.command:
         argv:
           - python3
           - -c
           - |
-            import boto3
-            import json
+            import boto3, json
 
-            ec2 = boto3.client("ec2", region_name="us-east-2")
-            instance_id = "i-0620229f42b87eb07"
-
-            instance = ec2.describe_instances(
-                InstanceIds=[instance_id]
-            )["Reservations"][0]["Instances"][0]
-
-            sg_ids = [
-                sg["GroupId"]
-                for sg in instance["SecurityGroups"]
-            ]
-
-            groups = ec2.describe_security_groups(
-                GroupIds=sg_ids
-            )["SecurityGroups"]
-
-            nacls = ec2.describe_network_acls(
+            ssm = boto3.client("ssm", region_name="us-east-2")
+            result = ssm.describe_instance_information(
                 Filters=[
                     {
-                        "Name": "association.subnet-id",
-                        "Values": [instance["SubnetId"]]
+                        "Key": "InstanceIds",
+                        "Values": ["i-0620229f42b87eb07"]
                     }
                 ]
-            )["NetworkAcls"]
-
-            dns = ec2.describe_vpc_attribute(
-                VpcId=instance["VpcId"],
-                Attribute="enableDnsSupport"
             )
 
-            hostnames = ec2.describe_vpc_attribute(
-                VpcId=instance["VpcId"],
-                Attribute="enableDnsHostnames"
-            )
-
-            result = {
-                "security_groups": [
-                    {
-                        "id": sg["GroupId"],
-                        "name": sg["GroupName"],
-                        "egress": sg["IpPermissionsEgress"]
-                    }
-                    for sg in groups
-                ],
-                "network_acls": [
-                    {
-                        "id": acl["NetworkAclId"],
-                        "entries": acl["Entries"]
-                    }
-                    for acl in nacls
-                ],
-                "vpc_dns_support": dns["EnableDnsSupport"]["Value"],
-                "vpc_dns_hostnames": hostnames["EnableDnsHostnames"]["Value"]
-            }
-
-            print(json.dumps(result, indent=2, default=str))
-      register: network_detail
+            print(json.dumps([
+                {
+                    "instance_id": item["InstanceId"],
+                    "ping_status": item["PingStatus"],
+                    "agent_version": item.get("AgentVersion"),
+                    "last_ping": str(item.get("LastPingDateTime"))
+                }
+                for item in result["InstanceInformationList"]
+            ], indent=2))
+      register: ssm_status
       changed_when: false
 
-    - name: Display outbound network details
+    - name: Display SSM status
       ansible.builtin.debug:
-        var: network_detail.stdout
+        var: ssm_status.stdout
