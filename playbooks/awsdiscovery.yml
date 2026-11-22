@@ -34,19 +34,38 @@
           state: available
           name: "*RHEL-9*"
       register: rhel_images
-      
-    - name: Display VPC details
-      ansible.builtin.debug:
-        var: vpcs.vpcs
 
-    - name: Display subnet details
+    - name: Show VPC summary
       ansible.builtin.debug:
-        var: subnets.subnets
+        msg:
+          - "VPC: {{ item.vpc_id }}"
+          - "CIDR: {{ item.cidr_block }}"
+          - "State: {{ item.state }}"
+      loop: "{{ vpcs.vpcs }}"
 
-    - name: Display security group details
+    - name: Show subnet summary
       ansible.builtin.debug:
-        var: security_groups.security_groups
+        msg:
+          - "Subnet: {{ item.subnet_id }}"
+          - "VPC: {{ item.vpc_id }}"
+          - "AZ: {{ item.availability_zone }}"
+          - "CIDR: {{ item.cidr_block }}"
+      loop: "{{ subnets.subnets }}"
 
-    - name: Display RHEL AMI details
+    - name: Show security group summary
       ansible.builtin.debug:
-        var: rhel_images.images
+        msg:
+          - "Group ID: {{ item.group_id }}"
+          - "Name: {{ item.group_name }}"
+          - "VPC: {{ item.vpc_id }}"
+      loop: "{{ security_groups.security_groups }}"
+
+    - name: Show RHEL AMI summary
+      ansible.builtin.debug:
+        msg:
+          - "AMI: {{ item.image_id }}"
+          - "Name: {{ item.name | default('Not provided') }}"
+          - "Created: {{ item.creation_date }}"
+          - "State: {{ item.state }}"
+          - "Owner: {{ item.owner_id }}"
+      loop: "{{ rhel_images.images | sort(attribute='creation_date', reverse=true) }}"
