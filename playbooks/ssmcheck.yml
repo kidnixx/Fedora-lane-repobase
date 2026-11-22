@@ -16,7 +16,7 @@
             import json
 
             ec2 = boto3.client("ec2", region_name="us-east-2")
-            instance_id = "i-0bc378a668bdc9ca5"
+            instance_id = "i-0620229f42b87eb07"
 
             instance = ec2.describe_instances(
                 InstanceIds=[instance_id]
