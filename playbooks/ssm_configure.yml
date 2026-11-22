@@ -1,0 +1,80 @@
+
+---
+- name: Configure Fedora Lane staging through SSM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Apply staging configuration through SSM
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3, json, time, sys
+
+            instance_id = "i-0620229f42b87eb07"
+            ssm = boto3.client("ssm", region_name="us-east-2")
+
+            script = """#!/bin/bash
+            set -e
+            hostnamectl set-hostname fedora-lane-staging
+            dnf install -y curl wget vim-enhanced git tar unzip jq
+            mkdir -p /opt/fedora-lane/config /var/log/fedora-lane
+            chmod 755 /opt/fedora-lane /opt/fedora-lane/config /var/log/fedora-lane
+            cat > /etc/motd <<'EOF'
+            ==========================================
+               FEDORA LANE - STAGING ENVIRONMENT
+            ==========================================
+            Managed by Ansible Automation Platform.
+            Environment: STAGING
+            Host: fedora-lane-staging
+            ==========================================
+            EOF
+            echo "FEDORA_LANE_CONFIGURATION_SUCCESS"
+            """
+
+            response = ssm.send_command(
+                InstanceIds=[instance_id],
+                DocumentName="AWS-RunShellScript",
+                Parameters={"commands": [script]},
+                TimeoutSeconds=600
+            )
+
+            command_id = response["Command"]["CommandId"]
+
+            for attempt in range(120):
+                time.sleep(5)
+                try:
+                    result = ssm.get_command_invocation(
+                        CommandId=command_id,
+                        InstanceId=instance_id
+                    )
+                    status = result["Status"]
+
+                    if status in ["Success", "Failed", "TimedOut",
+                                  "Cancelled", "Undeliverable",
+                                  "Terminated"]:
+                        print(json.dumps({
+                            "command_id": command_id,
+                            "status": status,
+                            "exit_code": result.get("ResponseCode"),
+                            "stdout": result.get("StandardOutputContent"),
+                            "stderr": result.get("StandardErrorContent")
+                        }, indent=2))
+
+                        if status != "Success":
+                            sys.exit(1)
+                        break
+                except ssm.exceptions.InvocationDoesNotExist:
+                    continue
+            else:
+                print("Timed out waiting for SSM command completion")
+                sys.exit(1)
+      register: configuration_result
+      changed_when: true
+
+    - name: Display configuration result
+      ansible.builtin.debug:
+        var: configuration_result.stdout
