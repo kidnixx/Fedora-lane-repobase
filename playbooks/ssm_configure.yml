@@ -14,7 +14,7 @@
           - |
             import boto3, json, time, sys
 
-            instance_id = "i-0620229f42b87eb07"
+            instance_id = "{{ fedora_lane_instance_id }}"
             ssm = boto3.client("ssm", region_name="us-east-2")
 
             script = """#!/bin/bash
