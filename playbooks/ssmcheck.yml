@@ -1,17 +1,38 @@
 
 ---
-- name: Check Fedora Lane instance SSM registration
+- name: Check Fedora Lane SSM registration
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Retrieve SSM managed instance information
-      amazon.aws.ssm_instance_info:
-        region: us-east-2
-      register: ssm_instances
+    - name: Query AWS Systems Manager
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import boto3
+            import json
 
-    - name: Display registration status
+            client = boto3.client("ssm", region_name="us-east-2")
+            response = client.describe_instance_information(
+                Filters=[
+                    {
+                        "Key": "InstanceIds",
+                        "Values": ["i-0bc378a668bdc9ca5"]
+                    }
+                ]
+            )
+
+            print(json.dumps(
+                response.get("InstanceInformationList", []),
+                default=str,
+                indent=2
+            ))
+      register: ssm_result
+      changed_when: false
+
+    - name: Display SSM registration result
       ansible.builtin.debug:
-        msg: >-
-          {{ ssm_instances }}
+        var: ssm_result.stdout
