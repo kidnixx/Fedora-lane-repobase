@@ -1,0 +1,111 @@
+
+---
+- name: Launch Fedora Lane replacement staging server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    aws_region: us-east-2
+    aws_vpc_id: vpc-0f9c73f7d581555ac
+    aws_subnet_id: subnet-0dd9be84b04c86e58
+
+    rhel_ami_id: ami-08e728aab89b9de96
+    instance_type: t3.small
+    root_volume_size: 20
+
+    instance_name: fedora-lane-staging-ssm
+    demo_tag: fedora-lane-staging-ssm
+
+    security_group_name: fedora-lane-staging-sg
+    instance_profile_name: FedoraLaneSSMInstanceProfile
+
+  tasks:
+    - name: Check whether replacement already exists
+      amazon.aws.ec2_instance_info:
+        region: "{{ aws_region }}"
+        filters:
+          "tag:Demo": "{{ demo_tag }}"
+      register: existing_instances
+
+    - name: Prevent accidental duplicate replacement
+      ansible.builtin.assert:
+        that:
+          - existing_instances.instances | length == 0
+        fail_msg: >-
+          A replacement instance already exists.
+          Inspect it before launching another one.
+
+    - name: Create or reuse dedicated security group
+      amazon.aws.ec2_security_group:
+        name: "{{ security_group_name }}"
+        description: Dedicated Fedora Lane staging security group
+        vpc_id: "{{ aws_vpc_id }}"
+        region: "{{ aws_region }}"
+        rules: []
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Project: FedoraLane
+          ManagedBy: Ansible
+      register: fedora_lane_sg
+
+    - name: Launch replacement RHEL instance with SSM Agent
+      amazon.aws.ec2_instance:
+        region: "{{ aws_region }}"
+        name: "{{ instance_name }}"
+        image_id: "{{ rhel_ami_id }}"
+        instance_type: "{{ instance_type }}"
+
+        vpc_subnet_id: "{{ aws_subnet_id }}"
+
+        security_groups:
+          - "{{ fedora_lane_sg.group_id }}"
+
+        iam_instance_profile:
+          name: "{{ instance_profile_name }}"
+
+        network:
+          assign_public_ip: true
+
+        user_data: |
+          #!/bin/bash
+          set -eux
+
+          dnf install -y \
+            https://s3.us-east-2.amazonaws.com/amazon-ssm-us-east-2/latest/linux_amd64/amazon-ssm-agent.rpm
+
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+
+        volumes:
+          - device_name: /dev/sda1
+            ebs:
+              volume_size: "{{ root_volume_size }}"
+              volume_type: gp3
+              encrypted: true
+              delete_on_termination: true
+
+        state: running
+        wait: true
+
+        tags:
+          Name: "{{ instance_name }}"
+          Demo: "{{ demo_tag }}"
+          Project: FedoraLane
+          Environment: staging
+          ManagedBy: Ansible
+
+      register: replacement_instance
+
+    - name: Display replacement instance details
+      ansible.builtin.debug:
+        msg:
+          instance_id: "{{ item.instance_id }}"
+          state: "{{ item.state.name }}"
+          private_ip: "{{ item.private_ip_address | default('N/A') }}"
+          public_ip: "{{ item.public_ip_address | default('N/A') }}"
+          security_group: "{{ fedora_lane_sg.group_id }}"
+          iam_profile: "{{ instance_profile_name }}"
+      loop: "{{ replacement_instance.instances }}"
