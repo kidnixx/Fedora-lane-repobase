@@ -1,12 +1,12 @@
 
 ---
-- name: Diagnose Fedora Lane SSM connectivity
+- name: Inspect Fedora Lane outbound network access
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Inspect EC2 instance and network configuration
+    - name: Inspect security groups, network ACL and VPC DNS
       ansible.builtin.command:
         argv:
           - python3
@@ -15,83 +15,65 @@
             import boto3
             import json
 
-            region = "us-east-2"
+            ec2 = boto3.client("ec2", region_name="us-east-2")
             instance_id = "i-0bc378a668bdc9ca5"
 
-            ec2 = boto3.client("ec2", region_name=region)
-
-            response = ec2.describe_instances(
+            instance = ec2.describe_instances(
                 InstanceIds=[instance_id]
-            )
+            )["Reservations"][0]["Instances"][0]
 
-            instance = response["Reservations"][0]["Instances"][0]
+            sg_ids = [
+                sg["GroupId"]
+                for sg in instance["SecurityGroups"]
+            ]
 
-            association = ec2.describe_iam_instance_profile_associations(
-                Filters=[
-                    {
-                        "Name": "instance-id",
-                        "Values": [instance_id]
-                    }
-                ]
-            )
+            groups = ec2.describe_security_groups(
+                GroupIds=sg_ids
+            )["SecurityGroups"]
 
-            subnet_id = instance["SubnetId"]
-            vpc_id = instance["VpcId"]
-
-            routes = ec2.describe_route_tables(
+            nacls = ec2.describe_network_acls(
                 Filters=[
                     {
                         "Name": "association.subnet-id",
-                        "Values": [subnet_id]
+                        "Values": [instance["SubnetId"]]
                     }
                 ]
-            )["RouteTables"]
+            )["NetworkAcls"]
 
-            if not routes:
-                routes = ec2.describe_route_tables(
-                    Filters=[
-                        {
-                            "Name": "vpc-id",
-                            "Values": [vpc_id]
-                        },
-                        {
-                            "Name": "association.main",
-                            "Values": ["true"]
-                        }
-                    ]
-                )["RouteTables"]
+            dns = ec2.describe_vpc_attribute(
+                VpcId=instance["VpcId"],
+                Attribute="enableDnsSupport"
+            )
 
-            route_info = []
-
-            for table in routes:
-                for route in table["Routes"]:
-                    route_info.append({
-                        "destination": route.get("DestinationCidrBlock"),
-                        "gateway": route.get("GatewayId"),
-                        "state": route.get("State")
-                    })
+            hostnames = ec2.describe_vpc_attribute(
+                VpcId=instance["VpcId"],
+                Attribute="enableDnsHostnames"
+            )
 
             result = {
-                "instance_id": instance_id,
-                "state": instance["State"]["Name"],
-                "public_ip": instance.get("PublicIpAddress"),
-                "subnet_id": subnet_id,
-                "vpc_id": vpc_id,
-                "iam_profile": instance.get("IamInstanceProfile"),
-                "profile_association": [
+                "security_groups": [
                     {
-                        "state": item["State"],
-                        "association_id": item["AssociationId"]
+                        "id": sg["GroupId"],
+                        "name": sg["GroupName"],
+                        "egress": sg["IpPermissionsEgress"]
                     }
-                    for item in association["IamInstanceProfileAssociations"]
+                    for sg in groups
                 ],
-                "routes": route_info
+                "network_acls": [
+                    {
+                        "id": acl["NetworkAclId"],
+                        "entries": acl["Entries"]
+                    }
+                    for acl in nacls
+                ],
+                "vpc_dns_support": dns["EnableDnsSupport"]["Value"],
+                "vpc_dns_hostnames": hostnames["EnableDnsHostnames"]["Value"]
             }
 
             print(json.dumps(result, indent=2, default=str))
-      register: network_check
+      register: network_detail
       changed_when: false
 
-    - name: Display connectivity diagnosis
+    - name: Display outbound network details
       ansible.builtin.debug:
-        var: network_check.stdout
+        var: network_detail.stdout
