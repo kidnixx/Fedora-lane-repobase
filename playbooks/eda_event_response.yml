@@ -1,0 +1,14 @@
+
+---
+- name: Fedora Lane - EDA Event Response
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Display event response
+      ansible.builtin.debug:
+        msg:
+          - "FEDORA LANE: EVENT RECEIVED"
+          - "EDA successfully triggered this automation."
+          - "No infrastructure changes were performed."
