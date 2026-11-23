@@ -1,0 +1,13 @@
+---
+- name: Fedora Lane event demonstration
+  hosts: all
+  sources:
+    - ansible.eda.generic:
+        event_delay: 5
+
+  rules:
+    - name: Respond to staging health alert
+      condition: event.alert == "staging_health_check"
+      action:
+        run_job_template:
+          name: Fedora Lane - EDA Event Response
